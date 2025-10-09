@@ -1,7 +1,7 @@
 ---
 title: WebTransport support in .NET
 description: Learn about the support for WebTransport protocol in .NET.
-ms.date: 09/10/2026
+ms.date: 09/10/2025
 helpviewer_keywords:
     - "protocols, WebTransport"
     - "sending data, WebTransport"
