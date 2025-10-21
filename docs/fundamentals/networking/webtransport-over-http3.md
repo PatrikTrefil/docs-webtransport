@@ -81,7 +81,7 @@ await session.SetUnidirectionalStreamCountLimitForPeerAsync(20);
 
 // Open/accept streams.
 await using (outgoingStream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional))
-await using (incomingStream = await session.AcceptInboundStreamAsync(WebTransportStreamType.Unidirectional) {
+await using (incomingStream = await session.AcceptInboundStreamAsync(WebTransportStreamType.Unidirectional)
 {
     // Work with the streams...
 }
