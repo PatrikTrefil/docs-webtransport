@@ -29,24 +29,11 @@ WebTransport over HTTP/3 requires support for the transport protocol QUIC. For i
 -   <xref:System.Net.WebTransport.WebTransportSession> - WebTransport session, corresponding to [RFC XXXX Section 4.1](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-overview-10#name-session-wide-features).
 -   <xref:System.Net.WebTransport.WebTransportStream> - WebTransport stream, corresponding to [RFC 9000 Section 4.3](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-overview-10#name-streams).
 
-Before using these classes in a client-scenario, your code should check the static property `ClientWebTransportSession.IsSupported`:
-
-```csharp
-if (ClientWebTransportSession.IsSupported)
-{
-    // Use ClientWebTransportSession
-}
-else
-{
-    // Fallback/Error
-}
-```
-
 To use the WebTransport protocol in a server-scenario, see [WebTransport support in ASP.NET Core]().
 
 ### `WebTransportSession`
 
-<xref:System.Net.WebTransport.WebTransportSession> represents a WebTransport session. Client side sessions are created using a static method <xref:System.Net.WebTransport.ClientWebTransportSesssion.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Net.WebTransport.WebTransportSessionCreationOptions,System.Threading.CancellationToken)> that establishes the session. The session creation is configured using the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions>. You always need to provide a <xref:System.Uri> of the endpoint you want to establish the session with and a <xref:System.Net.Http.HttpMessageInvoker> instance that is used for the initial handshake. The <xref::System.Net.Http.HttpMessageInvoker> instance must support HTTP/3. Note, that it may be necessary for you to setup a keep-alive mechanism for the <xref::System.Net.Http.HttpMessageInvoker> to prevent an idle timeout of the underlying QUIC connection. If you are using <xref:System.Net.Http.SocketsHttpHandler>, you can use <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingDelay> and <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingTimeout>. The details of the configuration depend on your specific requirements and the configuration of the underlying QUIC connection. It is also possible to set various limits for the WebTransport session such as a limit for the number of bytes sent over the session (<xref:System.Net.WebTransport.ClientWebTransportSessionCreationOptions.InitialDataSentLimitForPeer>). If you do not set these limits, their default values will be used.
+<xref:System.Net.WebTransport.WebTransportSession> represents a WebTransport session. Client side sessions are created using a static method <xref:System.Net.WebTransport.ClientWebTransportSesssion.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Net.WebTransport.WebTransportSessionCreationOptions,System.Threading.CancellationToken)> that establishes the session. The session creation is configured using the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions>. You always need to provide a <xref:System.Uri> of the endpoint you want to establish the session with, an instance of <xref:System.Net.HttpVersion> that describes the version of the HTTP protocol to use (currently only supported version is <xref:System.Net.HttpVersion.Version30>) and a <xref:System.Net.Http.HttpMessageInvoker> instance that is used for the initial handshake. The <xref::System.Net.Http.HttpMessageInvoker> instance must support HTTP/3. Note, that it may be necessary for you to setup a keep-alive mechanism for the <xref::System.Net.Http.HttpMessageInvoker> to prevent an idle timeout of the underlying QUIC connection. If you are using <xref:System.Net.Http.SocketsHttpHandler>, you can use <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingDelay> and <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingTimeout>. The details of the configuration depend on your specific requirements and the configuration of the underlying QUIC connection. It is also possible to set various limits for the WebTransport session such as a limit for the number of bytes sent over the session (<xref:System.Net.WebTransport.ClientWebTransportSessionCreationOptions.InitialDataSentLimitForPeer>). If you do not set these limits, their default values will be used.
 
 Once the session is established, it can be used to open and accept unidirectional/bidirectional streams using <xref:System.Net.WebTransport.WebTransportSession.OpenOutboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)> and <xref:System.Net.WebTransport.WebTransportSession.AcceptInboundStreamAsync(System.Threading.CancellationToken)>.
 You can change the settings of the session during its lifetime using the `WebTransportSession.Set*LimitForPeerAsync()` methods.
@@ -59,19 +46,14 @@ Consider the following example code:
 ```csharp
 using System.Net.WebTransport;
 
-// First, check if QUIC is supported.
-if (!ClientWebTransportSession.IsSupported)
-{
-    Console.WriteLine("WebTransport over HTTP/3 is not supported, see QUIC platform dependencies.");
-    return;
-}
-
 var sessionCreationOptions = new WebTransportSessionCreationOptions
 {
     TargetUri = new Uri("https://example.com"),
     // Optional limits, if not set default values will be used.
     InitialUnidirectionalStreamCountLimitForPeer = 10,
     InitialBidirectionalStreamCountLimitForPeer = 100,
+    HttpVersion = HttpVersion.Version30,
+    HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact
 };
 
 await using WebTransportSession session = await WebTransportSession.ConnectAsync(sessionCreationOptions);
