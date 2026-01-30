@@ -39,7 +39,7 @@ Once the session is established, it can be used to open and accept unidirectiona
 You can change the settings of the session during its lifetime using the `WebTransportSession.Set*LimitForPeerAsync()` methods.
 The values of `WebTransportSession.*LimitProvidedByPeer` are updated automatically when the peer changes its limits.
 
-When the work with the session is done, it needs to be closed and disposed. Users can only close the session gracefully. If you want to provide a status code and status description, you shall use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync(System.Int64,System.String,System.Threading.CancellationToken)>. If you do not want to provide any details, you can use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>. You can also request the peer to close the session using <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> instead of closing it yourself. In some cases, the session may be closed abortively automatically. That happens for example if the peer violates the protocol or there is a network error. Finally, <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> must be called at the end of the work with the session to fully release all the associated resources.
+When the work with the session is done, it needs to be closed and disposed. Users can only close the session gracefully. If you want to provide a status code and status description, you shall use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync(System.Int64,System.String,System.Threading.CancellationToken)>. Note that the delivery of the status code and the status description is best-effort. If you do not want to provide any details, you can use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>. You can also request the peer to close the session using <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> instead of closing it yourself. In some cases, the session may be closed abortively automatically. That happens for example if the peer violates the protocol or there is a network error. Finally, <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> must be called at the end of the work with the session to fully release all the associated resources.
 
 Consider the following example code:
 
@@ -142,6 +142,10 @@ while (await stream.ReadAsync(buffer, cancellationToken) > 0)
 
 // DisposeAsync called by await using at the top.
 ```
+
+## Session closing handshake
+
+
 
 ## See also
 
