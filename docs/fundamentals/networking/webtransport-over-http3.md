@@ -39,7 +39,15 @@ Once the session is established, it can be used to open and accept unidirectiona
 You can change the settings of the session during its lifetime using the `WebTransportSession.Set*LimitForPeerAsync()` methods.
 The values of `WebTransportSession.*LimitProvidedByPeer` are updated automatically when the peer changes its limits.
 
-When the work with the session is done, it needs to be closed and disposed. Users can only close the session gracefully. If you want to provide a status code and status description, you shall use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync(System.Int64,System.String,System.Threading.CancellationToken)>. Note that the delivery of the status code and the status description is best-effort. If you do not want to provide any details, you can use <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>. You can also request the peer to close the session using <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> instead of closing it yourself. In some cases, the session may be closed abortively automatically. That happens for example if the peer violates the protocol or there is a network error. Finally, <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> must be called at the end of the work with the session to fully release all the associated resources.
+When the work with the session is done, it needs to be closed and disposed.
+The following methods are available for closing a session:
+
+-   <xref:System.Net.WebTransport.WebTransportSession.CloseAsync(System.Int64,System.String,System.Threading.CancellationToken)> gracefully closes the session with a status code and status description. The status code must be in the range `[0, 2^32)` and the status description must not exceed 1024 bytes after UTF-8 encoding. Delivery of the status code and description is best-effort.
+-   <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()> gracefully closes the session.
+-   <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> requests graceful shutdown from the peer instead of closing the session locally. The peer may still finish its own work before closing. When such a request is received locally, the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions.GracefulShutdownHandler> configured in <xref:System.Net.WebTransport.WebTransportSessionCreationOptions> is invoked.
+-   <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> calls <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>.
+
+When the peer closes the session, the close information is exposed through <xref:System.Net.WebTransport.WebTransportSession.CloseStatusCode> and <xref:System.Net.WebTransport.WebTransportSession.CloseStatusDescription>. If the peer used <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>, these properties contain `0` and an empty string. In some cases, such as protocol violations or network errors, the session may be closed abortively automatically.
 
 Consider the following example code:
 
@@ -142,10 +150,6 @@ while (await stream.ReadAsync(buffer, cancellationToken) > 0)
 
 // DisposeAsync called by await using at the top.
 ```
-
-## Session closing handshake
-
-
 
 ## See also
 
