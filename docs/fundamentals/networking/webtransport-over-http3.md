@@ -15,7 +15,7 @@ helpviewer_keywords:
 
 WebTransport protocol enables communication with a remote server using a secure multiplexed transport.
 Currently, we support WebTransport over HTTP/3.
-The <xref:System.Net.WebTransport.ClientWebTransportSession?displayProperty=fullName> exposes the ability to establish a WebTransport session over HTTP/3. The session can be established using the `ConnectAsync` method.
+<xref:System.Net.WebTransport.ClientWebTransportSession?displayProperty=fullName> exposes the ability to establish a WebTransport session over HTTP/3. The session can be established using the `ConnectAsync` method.
 
 ## Platform dependencies
 
@@ -33,9 +33,9 @@ To use the WebTransport protocol in a server-scenario, see [WebTransport support
 
 ### `WebTransportSession`
 
-<xref:System.Net.WebTransport.WebTransportSession> represents a WebTransport session. Client side sessions are created using a static method <xref:System.Net.WebTransport.ClientWebTransportSesssion.ConnectAsync(System.Uri,System.Net.Http.HttpMessageInvoker,System.Net.WebTransport.WebTransportSessionCreationOptions,System.Threading.CancellationToken)> that establishes the session. The session creation is configured using the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions>. You always need to provide a <xref:System.Uri> of the endpoint you want to establish the session with, an instance of <xref:System.Net.HttpVersion> that describes the version of the HTTP protocol to use (currently only supported version is <xref:System.Net.HttpVersion.Version30>) and a <xref:System.Net.Http.HttpMessageInvoker> instance that is used for the initial handshake. The <xref::System.Net.Http.HttpMessageInvoker> instance must support HTTP/3. Note, that it may be necessary for you to setup a keep-alive mechanism for the <xref::System.Net.Http.HttpMessageInvoker> to prevent an idle timeout of the underlying QUIC connection. If you are using <xref:System.Net.Http.SocketsHttpHandler>, you can use <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingDelay> and <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingTimeout>. The details of the configuration depend on your specific requirements and the configuration of the underlying QUIC connection. It is also possible to set various limits for the WebTransport session such as a limit for the number of bytes sent over the session (<xref:System.Net.WebTransport.ClientWebTransportSessionCreationOptions.InitialDataSentLimitForPeer>). If you do not set these limits, their default values will be used.
+<xref:System.Net.WebTransport.WebTransportSession> represents a WebTransport session. Client side sessions are created using a static method <xref:System.Net.WebTransport.ClientWebTransportSession.ConnectAsync(System.Net.WebTransport.WebTransportSessionCreationOptions,System.Threading.CancellationToken)> that establishes the session. The session creation is configured using the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions>. You always need to provide a <xref:System.Uri> of the endpoint you want to establish the session with, an instance of <xref:System.Net.HttpVersion> that describes the version of the HTTP protocol to use (currently only supported version is <xref:System.Net.HttpVersion.Version30>), a <xref:System.Net.Http.HttpMessageInvoker> instance that is used for the initial handshake, and a default stream error code used for internal stream aborts. The <xref:System.Net.Http.HttpMessageInvoker> instance must support HTTP/3. The <xref:System.Net.WebTransport.WebTransportSessionCreationOptions.HttpVersionPolicy> property is optional. If you specify it, it must still allow HTTP/3 to be negotiated together with the configured HTTP version, because that is the only supported version now. Note, that it may be necessary for you to setup a keep-alive mechanism for the <xref:System.Net.Http.HttpMessageInvoker> to prevent an idle timeout of the underlying QUIC connection. At the time of writing, <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingDelay> and <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingTimeout> do not work for HTTP/3 yet. The details of the configuration depend on your specific requirements and the configuration of the underlying QUIC connection. It is also possible to set various limits for the WebTransport session such as a limit for the number of bytes sent over the session (<xref:System.Net.WebTransport.WebTransportSessionCreationOptions.InitialDataSentLimitForPeer>). If you do not set these limits, their default values will be used.
 
-Once the session is established, it can be used to open and accept unidirectional/bidirectional streams using <xref:System.Net.WebTransport.WebTransportSession.OpenOutboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)> and <xref:System.Net.WebTransport.WebTransportSession.AcceptInboundStreamAsync(System.Threading.CancellationToken)>.
+Once the session is established, it can be used to open and accept unidirectional or bidirectional streams using <xref:System.Net.WebTransport.WebTransportSession.OpenOutboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)> and <xref:System.Net.WebTransport.WebTransportSession.AcceptInboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)>.
 You can change the settings of the session during its lifetime using the `WebTransportSession.Set*LimitForPeerAsync()` methods.
 The values of `WebTransportSession.*LimitProvidedByPeer` are updated automatically when the peer changes its limits.
 
@@ -47,31 +47,36 @@ The following methods are available for closing a session:
 -   <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> requests graceful shutdown from the peer instead of closing the session locally. The peer may still finish its own work before closing. When such a request is received locally, the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions.GracefulShutdownHandler> configured in <xref:System.Net.WebTransport.WebTransportSessionCreationOptions> is invoked.
 -   <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> calls <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>.
 
-When the peer closes the session, the close information is exposed through <xref:System.Net.WebTransport.WebTransportSession.CloseStatusCode> and <xref:System.Net.WebTransport.WebTransportSession.CloseStatusDescription>. If the peer used <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>, these properties contain `0` and an empty string. In some cases, such as protocol violations or network errors, the session may be closed abortively automatically.
+When the peer closes the session, the close information is exposed through <xref:System.Net.WebTransport.WebTransportSession.CloseStatusCode> and <xref:System.Net.WebTransport.WebTransportSession.CloseStatusDescription>. If the peer used <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>, these properties contain `0` and an empty string. If the local side closes the session, these properties remain `null`. In some cases, such as protocol violations or network errors, the session may be closed abortively automatically.
 
 Consider the following example code:
 
 ```csharp
+using System.Net;
+using System.Net.Http;
 using System.Net.WebTransport;
 
 var sessionCreationOptions = new WebTransportSessionCreationOptions
 {
-    TargetUri = new Uri("https://example.com"),
+    Uri = new Uri("https://example.com"),
+    HttpMessageInvoker = new HttpClient(),
     // Optional limits, if not set default values will be used.
     InitialUnidirectionalStreamCountLimitForPeer = 10,
     InitialBidirectionalStreamCountLimitForPeer = 100,
     HttpVersion = HttpVersion.Version30,
-    HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact
+    HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact,
+    DefaultStreamErrorCode = 0
 };
 
-await using WebTransportSession session = await WebTransportSession.ConnectAsync(sessionCreationOptions);
+await using WebTransportSession session =
+    await ClientWebTransportSession.ConnectAsync(sessionCreationOptions);
 
 // Update the unidirectional stream limit for the peer.
 await session.SetUnidirectionalStreamCountLimitForPeerAsync(20);
 
 // Open/accept streams.
-await using (outgoingStream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional))
-await using (incomingStream = await session.AcceptInboundStreamAsync(WebTransportStreamType.Unidirectional)
+await using (var outgoingStream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional))
+await using (var incomingStream = await session.AcceptInboundStreamAsync(WebTransportStreamType.Unidirectional))
 {
     // Work with the streams...
 }
@@ -140,7 +145,7 @@ await stream.WriteAsync(data, cancellationToken);
 // End the writing-side together with the last data.
 await stream.WriteAsync(data, completeWrites: true, cancellationToken);
 // Or separately.
-stream.CompleteWrites();
+// stream.CompleteWrites();
 
 // Read data until the end of stream.
 while (await stream.ReadAsync(buffer, cancellationToken) > 0)
@@ -155,9 +160,8 @@ while (await stream.ReadAsync(buffer, cancellationToken) > 0)
 
 -   [Networking in .NET](../overview.md)
 -   [HTTP/3 with HttpClient](../../../core/extensions/httpclient-http3.md)
--   [WebTransport support in ASP.NET Core]()
 -   <xref:System.Net.WebTransport>
--   <xref:System.Net.WebTransport.WebTransportSesssion>
--   <xref:System.Net.WebTransport.ClientWebTransportSesssion>
+-   <xref:System.Net.WebTransport.WebTransportSession>
+-   <xref:System.Net.WebTransport.ClientWebTransportSession>
 -   <xref:System.Net.WebTransport.WebTransportStream>
 -   <xref:System.Net.Quic>
