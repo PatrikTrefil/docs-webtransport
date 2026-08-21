@@ -1,0 +1,167 @@
+---
+title: WebTransport support in .NET
+description: Learn about the support for WebTransport protocol in .NET.
+ms.date: 09/10/2025
+helpviewer_keywords:
+    - "protocols, WebTransport"
+    - "sending data, WebTransport"
+    - "WebTransport"
+    - "receiving data, WebTransport"
+    - "application protocols, WebTransport"
+    - "Internet, WebTransport"
+---
+
+# WebTransport protocol
+
+WebTransport protocol enables communication with a remote server using a secure multiplexed transport.
+Currently, we support WebTransport over HTTP/3.
+<xref:System.Net.WebTransport.ClientWebTransportSession?displayProperty=fullName> exposes the ability to establish a WebTransport session over HTTP/3. The session can be established using the `ConnectAsync` method.
+
+## Platform dependencies
+
+WebTransport over HTTP/3 requires support for the transport protocol QUIC. For information on the platform requirements of QUIC in .NET, see [QUIC Platform dependencies](../quic/quic-overview.md#platform-dependencies).
+
+## API overview
+
+<xref:System.Net.WebTransport> brings three major classes that enable the usage of the WebTransport protocol:
+
+-   <xref:System.Net.WebTransport.ClientWebTransportSession> - client side class for establishing WebTransport session over HTTP/3, corresponding to [WebTransport over HTTP/3 draft 12 Section 3](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-http3-12#section-3).
+-   <xref:System.Net.WebTransport.WebTransportSession> - WebTransport session, corresponding to [WebTransport framework draft 9 Section 4.1](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-overview-09#section-4.1).
+-   <xref:System.Net.WebTransport.WebTransportStream> - WebTransport stream, corresponding to [WebTransport framework draft 9 Section 4.3](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-overview-09#section-4.3).
+
+### `WebTransportSession`
+
+<xref:System.Net.WebTransport.WebTransportSession> represents a WebTransport session. Client side sessions are created using a static method <xref:System.Net.WebTransport.ClientWebTransportSession.ConnectAsync(System.Net.WebTransport.WebTransportSessionCreationOptions,System.Threading.CancellationToken)> that establishes the session. The session creation is configured using the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions>. You always need to provide a <xref:System.Uri> of the endpoint you want to establish the session with, an instance of <xref:System.Net.HttpVersion> that describes the version of the HTTP protocol to use (currently only supported version is <xref:System.Net.HttpVersion.Version30>), a <xref:System.Net.Http.HttpMessageInvoker> instance that is used for the initial handshake, and a default stream error code used for internal stream aborts. The <xref:System.Net.Http.HttpMessageInvoker> instance must support HTTP/3. The <xref:System.Net.WebTransport.WebTransportSessionCreationOptions.HttpVersionPolicy> property is optional. If you specify it, it must still allow HTTP/3 to be negotiated together with the configured HTTP version, because that is the only supported version now. Note, that it may be necessary for you to setup a keep-alive mechanism for the <xref:System.Net.Http.HttpMessageInvoker> to prevent an idle timeout of the underlying QUIC connection. At the time of writing, <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingDelay> and <xref:System.Net.Http.SocketsHttpHandler.KeepAlivePingTimeout> do not work for HTTP/3 yet. The details of the configuration depend on your specific requirements and the configuration of the underlying QUIC connection. It is also possible to set stream-count and data limits for the WebTransport session, such as the number of bytes the peer may send over the session (<xref:System.Net.WebTransport.WebTransportSessionCreationOptions.InitialDataSentLimitForPeer>). If you do not set these limits, their default values will be used.
+
+Once the session is established, it can be used to open and accept unidirectional or bidirectional streams using <xref:System.Net.WebTransport.WebTransportSession.OpenOutboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)> and <xref:System.Net.WebTransport.WebTransportSession.AcceptInboundStreamAsync(System.Net.WebTransport.WebTransportStreamType,System.Threading.CancellationToken)>.
+You can increase the peer's stream-count and data limits for the session during its lifetime using the `WebTransportSession.Set*LimitForPeerAsync()` methods.
+The values of `WebTransportSession.*LimitProvidedByPeer` are updated automatically when the peer increases the corresponding stream-count or data limit.
+
+When the work with the session is done, it needs to be closed and disposed.
+The following methods are available for closing a session:
+
+-   <xref:System.Net.WebTransport.WebTransportSession.CloseAsync(System.Int64,System.String,System.Threading.CancellationToken)> gracefully closes the session with a status code and status description. The status code must be in the range `[0, 2^32)` and the status description must not exceed 1024 bytes after UTF-8 encoding. Delivery of the status code and description is best-effort.
+-   <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()> gracefully closes the session.
+-   <xref:System.Net.WebTransport.WebTransportSession.RequestCloseAsync(System.Threading.CancellationToken)> requests graceful shutdown from the peer instead of closing the session locally. The peer may still finish its own work before closing. When such a request is received locally, the <xref:System.Net.WebTransport.WebTransportSessionCreationOptions.GracefulShutdownHandler> configured in <xref:System.Net.WebTransport.WebTransportSessionCreationOptions> is invoked. If no custom handler is provided, the default handler calls <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>. Applications that need to finish work before closing must therefore provide a custom handler.
+-   <xref:System.Net.WebTransport.WebTransportSession.DisposeAsync> calls <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>.
+
+When the peer closes the session, the close information is exposed through <xref:System.Net.WebTransport.WebTransportSession.CloseStatusCode> and <xref:System.Net.WebTransport.WebTransportSession.CloseStatusDescription>. If the peer used <xref:System.Net.WebTransport.WebTransportSession.CloseAsync()>, these properties contain `0` and an empty string. If the local side closes the session, these properties remain `null`. In some cases, such as protocol violations or network errors, the session may be closed abortively automatically.
+
+Consider the following example code:
+
+```csharp
+using System.Net;
+using System.Net.Http;
+using System.Net.WebTransport;
+
+var sessionCreationOptions = new WebTransportSessionCreationOptions
+{
+    Uri = new Uri("https://example.com"),
+    HttpMessageInvoker = new HttpClient(),
+    // Optional stream-count and data limits. If omitted, default values are used.
+    InitialUnidirectionalStreamCountLimitForPeer = 10,
+    InitialBidirectionalStreamCountLimitForPeer = 100,
+    InitialDataSentLimitForPeer = 1024,
+    HttpVersion = HttpVersion.Version30,
+    HttpVersionPolicy = HttpVersionPolicy.RequestVersionExact,
+    DefaultStreamErrorCode = 0
+};
+
+await using WebTransportSession session =
+    await ClientWebTransportSession.ConnectAsync(sessionCreationOptions);
+
+// Increase the unidirectional stream limit for the peer.
+await session.SetUnidirectionalStreamCountLimitForPeerAsync(20);
+
+// Open/accept streams.
+await using (var outgoingStream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional))
+await using (var incomingStream = await session.AcceptInboundStreamAsync(WebTransportStreamType.Unidirectional))
+{
+    // Work with the streams...
+}
+
+// Close the connection with a custom code.
+await session.CloseAsync(42, "Status description");
+
+// DisposeAsync will be called by await using at the top.
+```
+
+### `WebTransportStream`
+
+<xref:System.Net.WebTransport.WebTransportStream> is the actual type that is used to send and receive data in the WebTransport protocol. It derives from ordinary <xref:System.IO.Stream> and can be used as such, but it also offers several features that are specific to the WebTransport protocol. Firstly, a WebTransport stream can either be unidirectional or bidirectional, see [WebTransport framework draft 9 Section 4.3](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-overview-09#section-4.3). A bidirectional stream is able to send and receive data on both sides, whereas unidirectional stream can only write from the initiating side and read on the accepting one.
+
+Another particularity of a WebTransport stream is the ability to explicitly gracefully close the writing side in the middle of work with the stream, see <xref:System.Net.WebTransport.WebTransportStream.CompleteWrites> or <xref:System.Net.WebTransport.WebTransportStream.WriteAsync(System.ReadOnlyMemory{System.Byte},System.Boolean,System.Threading.CancellationToken)> overload with `completeWrites` argument. Closing of the writing side lets the peer know that no more data will arrive, yet the peer still can continue sending (in case of a bidirectional stream). And for erroneous cases, either writing or reading side of the stream can be aborted, see <xref:System.Net.WebTransport.WebTransportStream.Abort(System.Net.WebTransport.WebTransportAbortDirection,System.Int64)>. When a read operation is cancelled using a <xref:System.Threading.CancellationToken>, the reading side of the stream is aborted. When a write operation is cancelled using a <xref:System.Threading.CancellationToken>, the writing side of the stream is aborted. The <xref:System.Net.WebTransport.WebTransportException.CloseStatusCode> property on the peer contains the error code passed to <xref:System.Net.WebTransport.WebTransportStream.Abort(System.Net.WebTransport.WebTransportAbortDirection,System.Int64)>.
+
+The behavior of the individual methods for each stream type is summarized in the following table (note that both client and server can open and accept streams):
+
+| Method                            | Peer opening stream                                                                                                                                                                | Peer accepting stream                                                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CanRead`                         | _bidirectional_: `true`<br/> _unidirectional_: `false`                                                                                                                             | `true`                                                                                                                                                                            |
+| `CanWrite`                        | `true`                                                                                                                                                                             | _bidirectional_: `true`<br/> _unidirectional_: `false`                                                                                                                            |
+| `ReadAsync`                       | _bidirectional_: reads data<br/> _unidirectional_: `InvalidOperationException`                                                                                                     | reads data                                                                                                                                                                        |
+| `WriteAsync`                      | sends data => peer read returns the data                                                                                                                                           | _bidirectional_: sends data => peer read returns the data<br/> _unidirectional_: `InvalidOperationException`                                                                      |
+| `CompleteWrites`                  | closes writing side => peer read returns 0                                                                                                                                         | _bidirectional_: closes writing side => peer read returns 0<br/> _unidirectional_: no-op                                                                                          |
+| `Abort(WebTransportAbortDirection.Read)`  | _bidirectional_: peer write throws `WebTransportException(WebTransportError.StreamAborted)`<br/> _unidirectional_: no-op | peer write throws `WebTransportException(WebTransportError.StreamAborted)`                                              |
+| `Abort(WebTransportAbortDirection.Write)` | peer read throws `WebTransportException(WebTransportError.StreamAborted)`                                                | _bidirectional_: peer read throws `WebTransportException(WebTransportError.StreamAborted)`<br/> _unidirectional_: no-op |
+
+On top of these methods, `WebTransportStream` offers two specialized properties to get notified whenever either reading or writing side of the stream has been closed: <xref:System.Net.WebTransport.WebTransportStream.ReadsClosed> and <xref:System.Net.WebTransport.WebTransportStream.WritesClosed>. Both return a `Task` that completes with its corresponding side getting closed, whether it be success or abort, in which case the `Task` will contain appropriate exception. These properties are useful when the user code needs to know about stream side getting closed without issuing call to `ReadAsync` or `WriteAsync`.
+
+Finally, when the work with the stream is done, it must be disposed, either synchronously with `Dispose()` or asynchronously with <xref:System.Net.WebTransport.WebTransportStream.DisposeAsync>, to release resources. The dispose will make sure that both reading and/or writing side - depending on the stream type - is closed. If stream hasn't been properly read till the end, dispose will issue an equivalent of `Abort(WebTransportAbortDirection.Read)`. However, if stream writing side hasn't been closed, it will be gracefully closed as it would be with `CompleteWrites`. The reason for this difference is to make sure that scenarios working with an ordinary `Stream` behave as expected and lead to a successful path. Consider the following example:
+
+```csharp
+// Work done with all different types of streams.
+async Task WorkWithStreamAsync(Stream stream)
+{
+    // This will dispose the stream at the end of the scope.
+    await using (stream)
+    {
+        // Simple echo, read data and send them back.
+        byte[] buffer = new byte[1024];
+        int count = 0;
+        // The loop stops when read returns 0 bytes as is common for all streams.
+        while ((count = await stream.ReadAsync(buffer)) > 0)
+        {
+            await stream.WriteAsync(buffer.AsMemory(0, count));
+        }
+    }
+}
+
+// Open a WebTransportStream and pass to the common method.
+var webtransportStream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional);
+await WorkWithStreamAsync(webtransportStream);
+```
+
+The sample usage of `WebTransportStream` in client scenario:
+
+```csharp
+// Consider session from the session example, open a bidirectional stream.
+await using var stream = await session.OpenOutboundStreamAsync(WebTransportStreamType.Bidirectional, cancellationToken);
+
+// Send some data.
+await stream.WriteAsync(data, cancellationToken);
+await stream.WriteAsync(data, cancellationToken);
+
+// End the writing-side together with the last data.
+await stream.WriteAsync(data, completeWrites: true, cancellationToken);
+// Or separately.
+// stream.CompleteWrites();
+
+// Read data until the end of stream.
+int bytesRead;
+while ((bytesRead = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+{
+    // Handle buffer.AsMemory(0, bytesRead)...
+}
+
+// DisposeAsync called by await using at the top.
+```
+
+## See also
+
+-   [Networking in .NET](../overview.md)
+-   [HTTP/3 with HttpClient](../../../core/extensions/httpclient-http3.md)
+-   <xref:System.Net.WebTransport>
+-   <xref:System.Net.WebTransport.WebTransportSession>
+-   <xref:System.Net.WebTransport.ClientWebTransportSession>
+-   <xref:System.Net.WebTransport.WebTransportStream>
+-   <xref:System.Net.Quic>
